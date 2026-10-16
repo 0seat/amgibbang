@@ -6,12 +6,12 @@ import { Page } from "@/components/header";
 import { QuestionCard } from "@/components/question-card";
 import { StatCounts, type SetStats } from "@/components/stat-counts";
 import type { Question } from "@/lib/questions";
-import { getUser } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 
 export default async function SetPage({ params, searchParams }: PageProps<"/sets/[id]">) {
   const { id } = await params;
   const { added, skipped } = await searchParams;
-  const { supabase, user } = await getUser();
+  const supabase = await db();
 
   const [{ data: stats }, { data: questions }] = await Promise.all([
     supabase
@@ -26,7 +26,7 @@ export default async function SetPage({ params, searchParams }: PageProps<"/sets
   const skippedCount = Number(skipped ?? 0);
 
   return (
-    <Page email={user?.email}>
+    <Page>
       <Link href="/" className="text-sm text-stone-500 hover:text-stone-800">
         ← 내 세트
       </Link>

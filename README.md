@@ -4,7 +4,7 @@
 
 ## MVP 범위
 
-- 구글 로그인, 사용자별 문제 세트
+- 1인용. 로그인 없음 (선택: `APP_PASSWORD`로 비밀번호 잠금)
 - JSON 붙여넣기 또는 파일 업로드, 검증, 미리보기
   - 오류가 있으면 오류 목록을 보여주고 정상 문제만 저장할지 묻는다
   - 같은 세트 안의 똑같은 문제(본문과 선택지 동일)는 건너뛴다
@@ -35,17 +35,16 @@
 
 ## 기술 스택
 
-Next.js 16 (App Router) + Supabase (Google 로그인, Postgres) + Tailwind CSS. 배포는 Vercel 기준.
+Next.js 16 (App Router) + Supabase (Postgres) + Tailwind CSS. 배포는 Vercel 기준.
+
+DB는 서버에서만 secret key로 접근한다. 브라우저에는 키가 노출되지 않는다.
 
 ## 처음 설정
 
 1. [Supabase](https://supabase.com)에서 프로젝트를 만든다.
 2. SQL Editor에서 `supabase/migrations/0001_init.sql`을 실행한다.
-3. Google 로그인 설정
-   - Google Cloud Console에서 OAuth 클라이언트(웹 애플리케이션)를 만들고, 승인된 리디렉션 URI에 `https://<프로젝트>.supabase.co/auth/v1/callback`을 넣는다.
-   - Supabase 대시보드 Authentication > Sign In / Providers > Google을 켜고 클라이언트 ID와 시크릿을 넣는다.
-   - Authentication > URL Configuration의 Redirect URLs에 `http://localhost:3000/auth/callback`과 배포 주소의 `/auth/callback`을 추가한다.
-4. `.env.example`을 `.env.local`로 복사하고 Supabase 프로젝트의 URL과 publishable key를 넣는다.
+3. `.env.example`을 `.env.local`로 복사하고, 프로젝트 설정 > API Keys의 Project URL과 secret key를 넣는다.
+4. 배포해서 인터넷에 공개할 때는 `APP_PASSWORD`도 설정한다. 설정하지 않으면 주소를 아는 누구나 들어올 수 있다.
 5. 실행
 
 ```bash

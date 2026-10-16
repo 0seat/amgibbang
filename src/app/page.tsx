@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { Page } from "@/components/header";
 import { StatCounts, type SetStats } from "@/components/stat-counts";
-import { getUser } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 
 export default async function HomePage() {
-  const { supabase, user } = await getUser();
+  const supabase = await db();
   const { data: sets, error } = await supabase
     .from("set_stats")
     .select("id, title, total, unsolved, correct, wrong")
@@ -12,7 +12,7 @@ export default async function HomePage() {
     .returns<SetStats[]>();
 
   return (
-    <Page email={user?.email}>
+    <Page>
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">내 문제 세트</h1>
         <Link

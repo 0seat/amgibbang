@@ -3,11 +3,11 @@ import { notFound } from "next/navigation";
 import { Page } from "@/components/header";
 import { QuestionCard } from "@/components/question-card";
 import type { Question } from "@/lib/questions";
-import { getUser } from "@/lib/supabase/server";
+import { db } from "@/lib/db";
 
 export default async function WrongNotePage({ params }: PageProps<"/sets/[id]/wrong">) {
   const { id } = await params;
-  const { supabase, user } = await getUser();
+  const supabase = await db();
 
   const [{ data: set }, { data: questions }] = await Promise.all([
     supabase.from("question_sets").select("id, title").eq("id", id).maybeSingle(),
@@ -24,7 +24,7 @@ export default async function WrongNotePage({ params }: PageProps<"/sets/[id]/wr
   const list = questions ?? [];
 
   return (
-    <Page email={user?.email}>
+    <Page>
       <Link href={`/sets/${id}`} className="text-sm text-stone-500 hover:text-stone-800">
         ← {set.title}
       </Link>

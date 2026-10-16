@@ -1,9 +1,9 @@
--- 암기빵 초기 스키마
+-- 암기빵 초기 스키마 (1인용)
 -- Supabase SQL Editor에 그대로 붙여넣어 실행한다.
+-- 앱 서버만 secret key로 접근한다. RLS를 켜고 정책을 두지 않아 브라우저용 키로는 아무것도 읽거나 쓸 수 없다.
 
 create table public.question_sets (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   title text not null check (char_length(title) between 1 and 100),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -12,7 +12,6 @@ create table public.question_sets (
 create table public.questions (
   id uuid primary key default gen_random_uuid(),
   set_id uuid not null references public.question_sets (id) on delete cascade,
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   question text not null check (char_length(question) > 0),
   options text[] not null check (array_length(options, 1) = 4),
   answer smallint not null check (answer between 1 and 4),
@@ -28,7 +27,6 @@ create index questions_set_status_idx on public.questions (set_id, status);
 create table public.attempts (
   id uuid primary key default gen_random_uuid(),
   question_id uuid not null references public.questions (id) on delete cascade,
-  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   chosen smallint not null check (chosen between 1 and 4),
   is_correct boolean not null,
   answered_at timestamptz not null default now()
@@ -36,26 +34,9 @@ create table public.attempts (
 
 create index attempts_question_idx on public.attempts (question_id);
 
--- 행 단위 보안: 자기 데이터만 읽고 쓴다
 alter table public.question_sets enable row level security;
 alter table public.questions enable row level security;
 alter table public.attempts enable row level security;
-
-create policy "own sets" on public.question_sets
-  for all to authenticated
-  using (user_id = auth.uid()) with check (user_id = auth.uid());
-
-create policy "own questions" on public.questions
-  for all to authenticated
-  using (user_id = auth.uid())
-  with check (
-    user_id = auth.uid()
-    and exists (select 1 from public.question_sets s where s.id = set_id and s.user_id = auth.uid())
-  );
-
-create policy "own attempts" on public.attempts
-  for all to authenticated
-  using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- 세트 목록용 상태별 개수
 create view public.set_stats with (security_invoker = true) as
@@ -89,7 +70,7 @@ begin
 
   select answer into v_answer
   from questions
-  where id = p_question_id and user_id = auth.uid()
+  where id = p_question_id
   for update;
 
   if not found then
@@ -110,3 +91,5 @@ begin
   return v_correct;
 end;
 $$;
+
+revoke execute on function public.submit_answer(uuid, int) from public, anon, authenticated;

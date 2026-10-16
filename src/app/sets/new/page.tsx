@@ -1,12 +1,10 @@
 import Link from "next/link";
 import { Page } from "@/components/header";
 import { Uploader } from "@/components/uploader";
-import { getUser } from "@/lib/supabase/server";
 
-export default async function NewSetPage() {
-  const { user } = await getUser();
+export default function NewSetPage() {
   return (
-    <Page email={user?.email}>
+    <Page>
       <Link href="/" className="text-sm text-stone-500 hover:text-stone-800">
         ← 내 세트
       </Link>
