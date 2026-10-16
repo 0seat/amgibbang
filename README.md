@@ -39,7 +39,16 @@ Next.js 16 (App Router) + Supabase (Postgres) + Tailwind CSS. 배포는 Vercel �
 
 DB는 서버에서만 secret key로 접근한다. 브라우저에는 키가 노출되지 않는다.
 
-## 처음 설정
+## 로컬에서 실행 (Docker 필요)
+
+1. Docker Desktop을 켠다.
+2. `npm run db:start`로 로컬 Supabase를 띄운다. 처음 실행할 때 `supabase/migrations`가 자동으로 적용된다.
+3. 출력된 `API_URL`과 `SECRET_KEY`를 `.env.local`의 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`에 넣는다.
+4. `npm run dev`로 실행하고 http://localhost:3000 을 연다.
+
+끌 때는 `npm run db:stop`. 데이터는 Docker 볼륨에 남는다. DB 관리 화면(Studio)은 http://127.0.0.1:54323 이다.
+
+## 배포용 설정
 
 1. [Supabase](https://supabase.com)에서 프로젝트를 만든다.
 2. SQL Editor에서 `supabase/migrations/0001_init.sql`을 실행한다.
