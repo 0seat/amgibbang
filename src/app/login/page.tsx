@@ -7,7 +7,7 @@ const ERRORS: Record<string, string> = {
 };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  if ((await auth())?.user) redirect("/");
+  if ((await auth())?.user?.id) redirect("/");
   const { error } = await searchParams;
   const message = typeof error === "string" ? (ERRORS[error] ?? "로그인하지 못했습니다. 다시 시도해 주세요.") : null;
 
