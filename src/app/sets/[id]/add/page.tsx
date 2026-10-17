@@ -2,12 +2,17 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Page } from "@/components/header";
 import { Uploader } from "@/components/uploader";
-import { db } from "@/lib/db";
+import { requireUser } from "@/lib/session";
 
 export default async function AddQuestionsPage({ params }: PageProps<"/sets/[id]/add">) {
   const { id } = await params;
-  const supabase = await db();
-  const { data: set } = await supabase.from("question_sets").select("id, title").eq("id", id).maybeSingle();
+  const { supabase, userId } = await requireUser();
+  const { data: set } = await supabase
+    .from("question_sets")
+    .select("id, title")
+    .eq("id", id)
+    .eq("owner_id", userId)
+    .maybeSingle();
   if (!set) notFound();
 
   return (

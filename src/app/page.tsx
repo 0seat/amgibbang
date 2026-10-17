@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { Page } from "@/components/header";
 import { StatCounts, type SetStats } from "@/components/stat-counts";
-import { db } from "@/lib/db";
+import { requireUser } from "@/lib/session";
 
 export default async function HomePage() {
-  const supabase = await db();
+  const { supabase, userId } = await requireUser();
   const { data: sets, error } = await supabase
     .from("set_stats")
     .select("id, title, total, unsolved, correct, wrong")
+    .eq("owner_id", userId)
     .order("updated_at", { ascending: false })
     .returns<SetStats[]>();
 

@@ -4,7 +4,7 @@
 
 ## MVP 범위
 
-- 1인용. 로그인 없음 (선택: `APP_PASSWORD`로 비밀번호 잠금)
+- Google 로그인. 세트는 계정별로 따로 보관 (`ALLOWED_EMAILS`로 들어올 수 있는 계정 제한)
 - JSON 붙여넣기 또는 파일 업로드, 검증, 미리보기
   - 오류가 있으면 오류 목록을 보여주고 정상 문제만 저장할지 묻는다
   - 같은 세트 안의 똑같은 문제(본문과 선택지 동일)는 건너뛴다
@@ -66,13 +66,23 @@ DB는 서버에서만 secret key로 접근한다. 브라우저에는 키가 노�
 1. [Supabase](https://supabase.com)에서 프로젝트를 만든다.
 2. SQL Editor에서 `supabase/migrations/0001_init.sql`을 실행한다.
 3. `.env.example`을 `.env.local`로 복사하고, 프로젝트 설정 > API Keys의 Project URL과 secret key를 넣는다.
-4. 배포해서 인터넷에 공개할 때는 `APP_PASSWORD`도 설정한다. 설정하지 않으면 주소를 아는 누구나 들어올 수 있다.
+4. Google 로그인 설정(아래)을 하고 `ALLOWED_EMAILS`에 들어올 계정을 넣는다. 비워두면 모든 Google 계정이 가입할 수 있다.
 5. 실행
 
 ```bash
 npm install
 npm run dev
 ```
+
+## Google 로그인 설정
+
+1. Google Cloud Console > API 및 서비스 > 사용자 인증 정보에서 OAuth 클라이언트 ID(웹 애플리케이션)를 만든다.
+2. 승인된 리디렉션 URI에 접속할 주소마다 `<주소>/api/auth/callback/google`을 넣는다.
+   - 배포: `https://amgibbang.kro.kr/api/auth/callback/google`
+   - 로컬: `http://localhost:3000/api/auth/callback/google`
+3. `.env.local`에 `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET`, `AUTH_TRUST_HOST=true`를 넣는다.
+
+로그인 기능 이전에 만든 세트(주인이 없는 세트)는 처음 로그인한 계정으로 넘어간다.
 
 ## 명령
 

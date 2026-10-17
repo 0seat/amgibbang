@@ -3,14 +3,14 @@ import { notFound } from "next/navigation";
 import { Page } from "@/components/header";
 import { QuestionCard } from "@/components/question-card";
 import type { Question } from "@/lib/questions";
-import { db } from "@/lib/db";
+import { requireUser } from "@/lib/session";
 
 export default async function BookmarksPage({ params }: PageProps<"/sets/[id]/bookmarks">) {
   const { id } = await params;
-  const supabase = await db();
+  const { supabase, userId } = await requireUser();
 
   const [{ data: set }, { data: questions }] = await Promise.all([
-    supabase.from("question_sets").select("id, title").eq("id", id).maybeSingle(),
+    supabase.from("question_sets").select("id, title").eq("id", id).eq("owner_id", userId).maybeSingle(),
     supabase
       .from("questions")
       .select("*")

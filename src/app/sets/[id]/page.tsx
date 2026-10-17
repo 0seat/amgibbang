@@ -6,18 +6,19 @@ import { Page } from "@/components/header";
 import { QuestionCard } from "@/components/question-card";
 import { StatCounts, type SetStats } from "@/components/stat-counts";
 import type { Question } from "@/lib/questions";
-import { db } from "@/lib/db";
+import { requireUser } from "@/lib/session";
 
 export default async function SetPage({ params, searchParams }: PageProps<"/sets/[id]">) {
   const { id } = await params;
   const { added, skipped } = await searchParams;
-  const supabase = await db();
+  const { supabase, userId } = await requireUser();
 
   const [{ data: stats }, { data: questions }] = await Promise.all([
     supabase
       .from("set_stats")
       .select("id, title, total, unsolved, correct, wrong, bookmarked")
       .eq("id", id)
+      .eq("owner_id", userId)
       .maybeSingle<SetStats & { bookmarked: number }>(),
     supabase.from("questions").select("*").eq("set_id", id).order("created_at").returns<Question[]>(),
   ]);
