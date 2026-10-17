@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AUTH_COOKIE, authToken, isAuthed } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { MAX_QUESTIONS_PER_UPLOAD, questionKey, validateQuestion, type QuestionInput } from "@/lib/questions";
+import { MAX_QUESTIONS_PER_UPLOAD, questionKey, toRow, validateQuestion, type QuestionInput } from "@/lib/questions";
 
 /** 서버 액션은 POST로 직접 호출될 수 있으므로 여기서도 잠금을 확인한다. */
 async function requireAuth() {
@@ -42,7 +42,7 @@ export async function createSet(title: string, questions: unknown[]): Promise<Up
   const { data: set, error } = await supabase.from("question_sets").insert({ title: name }).select("id").single();
   if (error) throw new Error(error.message);
 
-  const { error: qError } = await supabase.from("questions").insert(clean.map((q) => ({ ...q, set_id: set.id })));
+  const { error: qError } = await supabase.from("questions").insert(clean.map((q) => ({ ...toRow(q), set_id: set.id })));
   if (qError) {
     await supabase.from("question_sets").delete().eq("id", set.id);
     throw new Error(qError.message);
@@ -66,7 +66,7 @@ export async function addQuestions(setId: string, questions: unknown[]): Promise
   const fresh = clean.filter((q) => !existingKeys.has(questionKey(q)));
 
   if (fresh.length) {
-    const { error: qError } = await supabase.from("questions").insert(fresh.map((q) => ({ ...q, set_id: setId })));
+    const { error: qError } = await supabase.from("questions").insert(fresh.map((q) => ({ ...toRow(q), set_id: setId })));
     if (qError) throw new Error(qError.message);
     await supabase.from("question_sets").update({ updated_at: new Date().toISOString() }).eq("id", setId);
   }
@@ -82,6 +82,25 @@ export async function recordAnswer(questionId: string, chosen: number): Promise<
   const { data, error } = await supabase.rpc("submit_answer", { p_question_id: questionId, p_chosen: chosen });
   if (error) throw new Error(error.message);
   return data as boolean;
+}
+
+/** 주관식 자기 채점을 기록한다. */
+export async function recordWrittenGrade(questionId: string, correct: boolean): Promise<void> {
+  const supabase = await requireAuth();
+  const { error } = await supabase.rpc("grade_written", { p_question_id: questionId, p_correct: correct });
+  if (error) throw new Error(error.message);
+}
+
+export async function setBookmark(setId: string, questionId: string, bookmarked: boolean): Promise<void> {
+  const supabase = await requireAuth();
+  const { error } = await supabase
+    .from("questions")
+    .update({ bookmarked })
+    .eq("id", questionId)
+    .eq("set_id", setId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/");
+  revalidatePath(`/sets/${setId}`, "layout");
 }
 
 export async function renameSet(setId: string, formData: FormData) {

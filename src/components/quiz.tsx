@@ -3,16 +3,27 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
-import { recordAnswer } from "@/app/actions";
+import { recordAnswer, recordWrittenGrade } from "@/app/actions";
+import { BookmarkButton } from "@/components/bookmark-button";
+import { WrittenBadge } from "@/components/question-card";
 import type { Question } from "@/lib/questions";
+
+export type QuizMode = "new" | "wrong" | "bookmark";
+
+const MODE_TEXT: Record<QuizMode, { title: string; empty: string }> = {
+  new: { title: "문제 풀기", empty: "안 푼 문제가 없습니다. 오답 노트를 보거나 세트를 초기화해 보세요." },
+  wrong: { title: "오답 다시 풀기", empty: "틀린 문제가 없습니다." },
+  bookmark: { title: "북마크 문제 풀기", empty: "북마크한 문제가 없습니다." },
+};
 
 type Item = {
   q: Question;
-  /** 화면 위치 -> 원래 선택지 위치(0부터) */
+  /** 화면 위치 -> 원래 선택지 위치(0부터). 주관식이면 빈 배열 */
   order: number[];
 };
 
-type Answered = { chosen: number; correct: boolean };
+/** chosen은 객관식에서 고른 번호, 주관식이면 null */
+type Answered = { chosen: number | null; correct: boolean };
 
 const PRESETS = [5, 10, 20];
 
@@ -33,7 +44,7 @@ export function Quiz({
 }: {
   setId: string;
   setTitle: string;
-  mode: "new" | "wrong";
+  mode: QuizMode;
   pool: Question[];
 }) {
   const router = useRouter();
@@ -46,7 +57,7 @@ export function Quiz({
 
   function start(count: number) {
     const picked = shuffle(pool).slice(0, count);
-    setItems(picked.map((q) => ({ q, order: shuffle([0, 1, 2, 3]) })));
+    setItems(picked.map((q) => ({ q, order: q.type === "choice" ? shuffle([0, 1, 2, 3]) : [] })));
     setAnswers(picked.map(() => null));
     setIndex(0);
     setFinished(false);
@@ -72,10 +83,10 @@ export function Quiz({
     return (
       <div>
         {back}
-        <h1 className="mt-2 text-xl font-bold">{mode === "wrong" ? "오답 다시 풀기" : "문제 풀기"}</h1>
+        <h1 className="mt-2 text-xl font-bold">{MODE_TEXT[mode].title}</h1>
         {pool.length === 0 ? (
           <p className="mt-6 rounded-xl bg-stone-100 px-4 py-8 text-center text-sm text-stone-600">
-            {mode === "wrong" ? "틀린 문제가 없습니다." : "안 푼 문제가 없습니다. 오답 노트를 보거나 세트를 초기화해 보세요."}
+            {MODE_TEXT[mode].empty}
           </p>
         ) : (
           <CountPicker max={pool.length} onStart={start} />
@@ -147,13 +158,31 @@ export function Quiz({
   const answer = answers[index];
   const isLast = index === items.length - 1;
 
+  function settle(result: Answered, save: Promise<unknown>) {
+    setAnswers((prev) => prev.map((a, i) => (i === index ? result : a)));
+    saving.current.push(save.catch(() => setSaveError(true)));
+  }
+
   function choose(displayIdx: number) {
     if (answer) return;
     const chosen = item.order[displayIdx] + 1;
-    const correct = chosen === item.q.answer;
-    setAnswers((prev) => prev.map((a, i) => (i === index ? { chosen, correct } : a)));
-    saving.current.push(recordAnswer(item.q.id, chosen).catch(() => setSaveError(true)));
+    settle({ chosen, correct: chosen === item.q.answer }, recordAnswer(item.q.id, chosen));
   }
+
+  function grade(correct: boolean) {
+    if (answer) return;
+    settle({ chosen: null, correct }, recordWrittenGrade(item.q.id, correct));
+  }
+
+  const next = (
+    <button
+      type="button"
+      onClick={() => (isLast ? setFinished(true) : setIndex(index + 1))}
+      className="mt-4 w-full rounded-xl bg-stone-900 py-3 font-medium text-white hover:bg-stone-800"
+    >
+      {isLast ? "결과 보기" : "다음 문제"}
+    </button>
+  );
 
   return (
     <div>
@@ -176,54 +205,142 @@ export function Quiz({
         />
       </div>
 
-      <p className="mt-6 whitespace-pre-wrap text-lg font-medium leading-relaxed">{item.q.question}</p>
+      <div className="mt-6 flex items-start gap-2">
+        <p className="flex-1 whitespace-pre-wrap text-lg font-medium leading-relaxed">{item.q.question}</p>
+        {item.q.type === "written" && (
+          <span className="pt-1.5">
+            <WrittenBadge />
+          </span>
+        )}
+        <BookmarkButton key={item.q.id} setId={setId} questionId={item.q.id} initial={item.q.bookmarked} />
+      </div>
 
-      <ul className="mt-6 space-y-2.5">
-        {item.order.map((orig, displayIdx) => {
-          const optionNo = orig + 1;
-          const isAnswer = optionNo === item.q.answer;
-          const isChosen = answer?.chosen === optionNo;
-          let style = "border-stone-300 bg-white hover:border-amber-400 hover:bg-amber-50";
-          if (answer) {
-            if (isAnswer) style = "border-emerald-500 bg-emerald-50";
-            else if (isChosen) style = "border-red-500 bg-red-50";
-            else style = "border-stone-200 bg-white opacity-60";
-          }
-          return (
-            <li key={orig}>
-              <button
-                type="button"
-                disabled={!!answer}
-                onClick={() => choose(displayIdx)}
-                className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${style}`}
+      {item.q.type === "written" ? (
+        <WrittenStep key={item.q.id} q={item.q} graded={answer} onGrade={grade} next={next} />
+      ) : (
+        <>
+          <ul className="mt-6 space-y-2.5">
+            {item.order.map((orig, displayIdx) => {
+              const optionNo = orig + 1;
+              const isAnswer = optionNo === item.q.answer;
+              const isChosen = answer?.chosen === optionNo;
+              let style = "border-stone-300 bg-white hover:border-amber-400 hover:bg-amber-50";
+              if (answer) {
+                if (isAnswer) style = "border-emerald-500 bg-emerald-50";
+                else if (isChosen) style = "border-red-500 bg-red-50";
+                else style = "border-stone-200 bg-white opacity-60";
+              }
+              return (
+                <li key={orig}>
+                  <button
+                    type="button"
+                    disabled={!!answer}
+                    onClick={() => choose(displayIdx)}
+                    className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${style}`}
+                  >
+                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current text-xs text-stone-500">
+                      {String.fromCharCode(65 + displayIdx)}
+                    </span>
+                    <span className="flex-1 whitespace-pre-wrap">{item.q.options?.[orig]}</span>
+                    {answer && isAnswer && <span className="text-sm font-medium text-emerald-700">정답</span>}
+                    {answer && isChosen && !isAnswer && <span className="text-sm font-medium text-red-700">오답</span>}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
+          {answer && (
+            <div className="mt-5">
+              <div
+                className={`rounded-xl px-4 py-3 ${answer.correct ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}
               >
-                <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current text-xs text-stone-500">
-                  {String.fromCharCode(65 + displayIdx)}
-                </span>
-                <span className="flex-1 whitespace-pre-wrap">{item.q.options[orig]}</span>
-                {answer && isAnswer && <span className="text-sm font-medium text-emerald-700">정답</span>}
-                {answer && isChosen && !isAnswer && <span className="text-sm font-medium text-red-700">오답</span>}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                <p className="font-bold">{answer.correct ? "정답입니다" : "틀렸습니다"}</p>
+                {item.q.explanation && <p className="mt-1.5 whitespace-pre-wrap text-sm">{item.q.explanation}</p>}
+              </div>
+              {next}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
-      {answer && (
-        <div className="mt-5">
-          <div
-            className={`rounded-xl px-4 py-3 ${answer.correct ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}
-          >
-            <p className="font-bold">{answer.correct ? "정답입니다" : "틀렸습니다"}</p>
-            {item.q.explanation && <p className="mt-1.5 whitespace-pre-wrap text-sm">{item.q.explanation}</p>}
+/** 주관식: 답을 적어보고(선택) 모범답안을 본 뒤 스스로 채점한다 */
+function WrittenStep({
+  q,
+  graded,
+  onGrade,
+  next,
+}: {
+  q: Question;
+  graded: Answered | null;
+  onGrade: (correct: boolean) => void;
+  next: React.ReactNode;
+}) {
+  const [draft, setDraft] = useState("");
+  const [revealed, setRevealed] = useState(false);
+
+  return (
+    <div className="mt-6">
+      <textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        disabled={revealed}
+        rows={4}
+        placeholder="답을 적어보세요 (선택)"
+        className="w-full rounded-xl border-2 border-stone-300 bg-white px-4 py-3 outline-none focus:border-amber-500 disabled:border-stone-200 disabled:bg-stone-50"
+      />
+
+      {!revealed ? (
+        <button
+          type="button"
+          onClick={() => setRevealed(true)}
+          className="mt-3 w-full rounded-xl bg-amber-500 py-3 font-medium text-white hover:bg-amber-600"
+        >
+          모범답안 보기
+        </button>
+      ) : (
+        <div className="mt-4">
+          <div className="rounded-xl bg-emerald-50 px-4 py-3 text-emerald-900">
+            <p className="text-sm font-bold">모범답안</p>
+            <p className="mt-1 whitespace-pre-wrap">{q.model_answer}</p>
+            {q.explanation && (
+              <p className="mt-2 whitespace-pre-wrap border-t border-emerald-200 pt-2 text-sm">{q.explanation}</p>
+            )}
           </div>
-          <button
-            type="button"
-            onClick={() => (isLast ? setFinished(true) : setIndex(index + 1))}
-            className="mt-4 w-full rounded-xl bg-stone-900 py-3 font-medium text-white hover:bg-stone-800"
-          >
-            {isLast ? "결과 보기" : "다음 문제"}
-          </button>
+
+          {graded ? (
+            <>
+              <p
+                className={`mt-4 rounded-xl px-4 py-3 font-bold ${graded.correct ? "bg-emerald-50 text-emerald-900" : "bg-red-50 text-red-900"}`}
+              >
+                {graded.correct ? "맞았다고 채점했습니다" : "틀렸다고 채점했습니다"}
+              </p>
+              {next}
+            </>
+          ) : (
+            <div className="mt-4">
+              <p className="text-sm text-stone-600">모범답안과 비교해서 직접 채점해 주세요.</p>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onGrade(true)}
+                  className="rounded-xl border-2 border-emerald-500 bg-white py-3 font-medium text-emerald-700 hover:bg-emerald-50"
+                >
+                  맞았어요
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onGrade(false)}
+                  className="rounded-xl border-2 border-red-500 bg-white py-3 font-medium text-red-700 hover:bg-red-50"
+                >
+                  틀렸어요
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

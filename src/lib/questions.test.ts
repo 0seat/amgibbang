@@ -70,3 +70,41 @@ test("중복 판별 키는 공백 차이를 무시한다", () => {
     questionKey({ question: "q", options: ["a", "b", "c", "d"] }),
   );
 });
+
+const written = { type: "written", question: "광합성의 산물을 쓰시오.", answer: "포도당과 산소", explanation: "명반응과 암반응" };
+
+test("주관식 문제를 파싱한다", () => {
+  const r = parseQuestions(JSON.stringify([written, good]));
+  assert.ok(r.ok);
+  assert.equal(r.issues.length, 0);
+  assert.deepEqual(r.valid[0], { ...written, type: "written" });
+  assert.equal(r.valid[1].type, "choice");
+});
+
+test("type이 없고 options도 없으면 주관식으로 본다", () => {
+  const r = parseQuestions(JSON.stringify([{ question: "q", answer: "모범답안" }, { type: "주관식", question: "q2", answer: "a" }]));
+  assert.ok(r.ok);
+  assert.deepEqual(
+    r.valid.map((q) => q.type),
+    ["written", "written"],
+  );
+});
+
+test("주관식 오류를 잡는다", () => {
+  const r = parseQuestions(
+    JSON.stringify([
+      { ...written, answer: " " },
+      { ...written, options: ["a", "b", "c", "d"] },
+      { ...written, type: "essay" },
+      { question: "options가 빠진 객관식", answer: 2 },
+    ]),
+  );
+  assert.ok(r.ok);
+  assert.equal(r.valid.length, 0);
+  assert.equal(r.issues.length, 4);
+});
+
+test("주관식 중복 키는 본문만 본다", () => {
+  assert.equal(questionKey({ question: "q ", options: null }), questionKey({ question: "q" }));
+  assert.notEqual(questionKey({ question: "q", options: null }), questionKey({ question: "q", options: ["a", "b", "c", "d"] }));
+});

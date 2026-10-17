@@ -16,9 +16,9 @@ export default async function SetPage({ params, searchParams }: PageProps<"/sets
   const [{ data: stats }, { data: questions }] = await Promise.all([
     supabase
       .from("set_stats")
-      .select("id, title, total, unsolved, correct, wrong")
+      .select("id, title, total, unsolved, correct, wrong, bookmarked")
       .eq("id", id)
-      .maybeSingle<SetStats>(),
+      .maybeSingle<SetStats & { bookmarked: number }>(),
     supabase.from("questions").select("*").eq("set_id", id).order("created_at").returns<Question[]>(),
   ]);
   if (!stats) notFound();
@@ -57,16 +57,16 @@ export default async function SetPage({ params, searchParams }: PageProps<"/sets
         <StatCounts stats={stats} large />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid grid-cols-3 gap-2">
         {stats.unsolved > 0 ? (
           <Link
             href={`/sets/${id}/solve`}
-            className="col-span-2 rounded-xl bg-amber-500 py-3 text-center font-medium text-white hover:bg-amber-600"
+            className="col-span-3 rounded-xl bg-amber-500 py-3 text-center font-medium text-white hover:bg-amber-600"
           >
             문제 풀기 ({stats.unsolved}문제 남음)
           </Link>
         ) : (
-          <p className="col-span-2 rounded-xl bg-stone-100 px-4 py-3 text-center text-sm text-stone-600">
+          <p className="col-span-3 rounded-xl bg-stone-100 px-4 py-3 text-center text-sm text-stone-600">
             {stats.total === 0
               ? "문제가 없습니다. 문제를 추가해 주세요."
               : "이 세트를 다 풀었습니다. 오답 노트를 보거나 초기화해서 다시 풀 수 있어요."}
@@ -77,6 +77,12 @@ export default async function SetPage({ params, searchParams }: PageProps<"/sets
           className="rounded-xl border border-stone-300 bg-white py-2.5 text-center text-sm font-medium hover:bg-stone-50"
         >
           오답 노트 ({stats.wrong})
+        </Link>
+        <Link
+          href={`/sets/${id}/bookmarks`}
+          className="rounded-xl border border-stone-300 bg-white py-2.5 text-center text-sm font-medium hover:bg-stone-50"
+        >
+          북마크 ({stats.bookmarked})
         </Link>
         <Link
           href={`/sets/${id}/add`}
