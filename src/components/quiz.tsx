@@ -178,10 +178,20 @@ export function Quiz({
     settle({ chosen: null, correct }, recordWrittenGrade(item.q.id, correct));
   }
 
+  function goNext() {
+    if (isLast) setFinished(true);
+    else setIndex(index + 1);
+  }
+
+  /** 문제를 오가도 북마크 상태가 유지되도록 목록에도 반영한다 */
+  function onBookmark(questionId: string, bookmarked: boolean) {
+    setItems((prev) => prev && prev.map((it) => (it.q.id === questionId ? { ...it, q: { ...it.q, bookmarked } } : it)));
+  }
+
   const next = (
     <button
       type="button"
-      onClick={() => (isLast ? setFinished(true) : setIndex(index + 1))}
+      onClick={goNext}
       className="mt-4 w-full rounded-xl bg-stone-900 py-3 font-medium text-white hover:bg-stone-800"
     >
       {isLast ? "결과 보기" : "다음 문제"}
@@ -191,9 +201,29 @@ export function Quiz({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <span className="text-sm text-stone-500">
-          {index + 1} / {items.length}
-        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setIndex(index - 1)}
+            disabled={index === 0}
+            aria-label="이전 문제"
+            className="rounded-lg px-2 py-1 text-sm text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:invisible"
+          >
+            ← 이전
+          </button>
+          <span className="text-sm text-stone-500">
+            {index + 1} / {items.length}
+          </span>
+          <button
+            type="button"
+            onClick={() => setIndex(index + 1)}
+            disabled={isLast}
+            aria-label="다음 문제로 이동"
+            className="rounded-lg px-2 py-1 text-sm text-stone-500 hover:bg-stone-100 hover:text-stone-800 disabled:invisible"
+          >
+            다음 →
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setFinished(true)}
@@ -205,7 +235,7 @@ export function Quiz({
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-stone-200">
         <div
           className="h-full rounded-full bg-amber-500 transition-all"
-          style={{ width: `${((index + (answer ? 1 : 0)) / items.length) * 100}%` }}
+          style={{ width: `${(answeredCount / items.length) * 100}%` }}
         />
       </div>
 
@@ -216,7 +246,13 @@ export function Quiz({
             <TypeBadge type={item.q.type} />
           </span>
         )}
-        <BookmarkButton key={item.q.id} setId={setId} questionId={item.q.id} initial={item.q.bookmarked} />
+        <BookmarkButton
+          key={item.q.id}
+          setId={setId}
+          questionId={item.q.id}
+          initial={item.q.bookmarked}
+          onChange={(b) => onBookmark(item.q.id, b)}
+        />
       </div>
 
       {item.q.type === "written" ? (
@@ -316,7 +352,8 @@ function WrittenStep({
   next: React.ReactNode;
 }) {
   const [draft, setDraft] = useState("");
-  const [revealed, setRevealed] = useState(false);
+  // 이전 문제로 돌아왔을 때 이미 채점한 문제는 모범답안을 바로 보여준다
+  const [revealed, setRevealed] = useState(graded !== null);
 
   return (
     <div className="mt-6">
