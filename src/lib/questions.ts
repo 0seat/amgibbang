@@ -1,6 +1,6 @@
 // 문제 JSON 파싱과 검증. 클라이언트(미리 검사)와 서버(저장 전 재검사)가 함께 쓴다.
 
-export type QuestionType = "choice" | "written";
+export type QuestionType = "choice" | "written" | "tf";
 
 export type ChoiceInput = {
   type: "choice";
@@ -18,7 +18,15 @@ export type WrittenInput = {
   explanation: string | null;
 };
 
-export type QuestionInput = ChoiceInput | WrittenInput;
+/** OX: answer는 true(O, 참) 또는 false(X, 거짓) */
+export type TrueFalseInput = {
+  type: "tf";
+  question: string;
+  answer: boolean;
+  explanation: string | null;
+};
+
+export type QuestionInput = ChoiceInput | WrittenInput | TrueFalseInput;
 
 export type QuestionStatus = "unsolved" | "correct" | "wrong";
 
@@ -29,7 +37,7 @@ export type Question = {
   question: string;
   /** 주관식이면 null */
   options: string[] | null;
-  /** 객관식 정답 번호. 주관식이면 null */
+  /** 객관식 정답 번호, OX는 1(O) 또는 2(X). 주관식이면 null */
   answer: number | null;
   /** 주관식 모범답안. 객관식이면 null */
   model_answer: string | null;
@@ -70,7 +78,27 @@ const TYPE_ALIASES: Record<string, QuestionType> = {
   객관식: "choice",
   written: "written",
   주관식: "written",
+  tf: "tf",
+  ox: "tf",
+  OX: "tf",
+  참거짓: "tf",
 };
+
+/** OX 정답으로 받아주는 값. true면 O(참) */
+const TF_ANSWERS: Record<string, boolean> = {
+  o: true,
+  x: false,
+  true: true,
+  false: false,
+  참: true,
+  거짓: false,
+};
+
+function parseTfAnswer(v: unknown): boolean | null {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "string") return TF_ANSWERS[v.trim().toLowerCase()] ?? null;
+  return null;
+}
 
 export function validateQuestion(raw: unknown): { value: QuestionInput | null; errors: string[] } {
   const errors: string[] = [];
@@ -79,11 +107,16 @@ export function validateQuestion(raw: unknown): { value: QuestionInput | null; e
   }
   const r = raw as Record<string, unknown>;
 
-  // type이 없으면 options 유무로 판단한다. 정답이 숫자인데 options만 빠졌다면 객관식 오류로 본다.
-  let type: QuestionType | null = r.options === undefined && typeof r.answer !== "number" ? "written" : "choice";
+  // type이 없으면 options와 정답 모양으로 판단한다. 정답이 숫자인데 options만 빠졌다면 객관식 오류로 본다.
+  let type: QuestionType | null =
+    r.options !== undefined || typeof r.answer === "number"
+      ? "choice"
+      : typeof r.answer === "boolean"
+        ? "tf"
+        : "written";
   if (r.type !== undefined) {
     type = typeof r.type === "string" ? (TYPE_ALIASES[r.type.trim()] ?? null) : null;
-    if (!type) errors.push('type은 "choice"(객관식) 또는 "written"(주관식)이어야 합니다.');
+    if (!type) errors.push('type은 "choice"(객관식), "written"(주관식), "tf"(OX) 중 하나여야 합니다.');
   }
 
   const question = typeof r.question === "string" ? r.question.trim() : "";
@@ -101,6 +134,14 @@ export function validateQuestion(raw: unknown): { value: QuestionInput | null; e
     if (!answer) errors.push("주관식 문제의 answer(모범답안)가 비어 있습니다.");
     if (r.options !== undefined && r.options !== null) errors.push("주관식 문제에는 options를 넣지 않습니다.");
     if (errors.length) return { value: null, errors };
+    return { value: { type, question, answer, explanation }, errors };
+  }
+
+  if (type === "tf") {
+    const answer = parseTfAnswer(r.answer);
+    if (answer === null) errors.push("OX 문제의 answer는 true(O) 또는 false(X)여야 합니다.");
+    if (r.options !== undefined && r.options !== null) errors.push("OX 문제에는 options를 넣지 않습니다.");
+    if (answer === null || errors.length) return { value: null, errors };
     return { value: { type, question, answer, explanation }, errors };
   }
 
@@ -154,8 +195,9 @@ export function parseQuestions(text: string): ParseResult {
   return { ok: true, total: data.length, valid, issues };
 }
 
-/** 객관식은 본문과 선택지가, 주관식은 본문이 같으면 같은 문제로 본다. */
-export function questionKey(q: { question: string; options?: readonly string[] | null }): string {
+/** 객관식은 본문과 선택지가, 주관식과 OX는 유형과 본문이 같으면 같은 문제로 본다. */
+export function questionKey(q: { type?: QuestionType; question: string; options?: readonly string[] | null }): string {
+  if (q.type === "tf") return ["\u0001tf", q.question.trim()].join("\u0000");
   if (!q.options) return ["\u0001written", q.question.trim()].join("\u0000");
   return [q.question.trim(), ...q.options.map((o) => o.trim())].join("\u0000");
 }
@@ -165,16 +207,20 @@ export function toRow(q: QuestionInput) {
   if (q.type === "written") {
     return { type: q.type, question: q.question, options: null, answer: null, model_answer: q.answer, explanation: q.explanation };
   }
+  if (q.type === "tf") {
+    return { type: q.type, question: q.question, options: null, answer: q.answer ? 1 : 2, model_answer: null, explanation: q.explanation };
+  }
   return { type: q.type, question: q.question, options: q.options, answer: q.answer, model_answer: null, explanation: q.explanation };
 }
 
 export const GENERATION_PROMPT = `아래 내용을 바탕으로 학교 시험 대비용 문제를 만들어줘.
-4지선다 객관식 [N]개, 주관식(서술형/단답형) [M]개. 필요 없는 유형은 0개로 둔다.
+4지선다 객관식 [N]개, 주관식(서술형/단답형) [M]개, OX [K]개. 필요 없는 유형은 0개로 둔다.
 
 규칙
 - 다른 말 없이 아래 JSON 배열 하나만 출력한다.
 - 객관식은 options를 반드시 4개 넣고, answer는 정답 선택지 번호(1~4)다.
 - 주관식은 options를 넣지 않고, answer에 모범답안을 문장으로 쓴다.
+- OX는 "type": "tf"를 넣고 options는 넣지 않는다. 맞는 문장이면 answer를 true, 틀린 문장이면 false로 쓴다.
 - explanation에는 왜 그 답이 맞는지 짧게 해설한다.
 - 문제 안에서 줄을 바꾸려면 \\n을 쓴다.
 
@@ -191,6 +237,12 @@ export const GENERATION_PROMPT = `아래 내용을 바탕으로 학교 시험 �
     "question": "주관식 문제 내용",
     "answer": "모범답안",
     "explanation": "채점 포인트나 해설"
+  },
+  {
+    "type": "tf",
+    "question": "참인지 거짓인지 판단할 문장",
+    "answer": false,
+    "explanation": "왜 맞거나 틀린지"
   }
 ]
 

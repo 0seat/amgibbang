@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addQuestions, createSet } from "@/app/actions";
-import { WrittenBadge } from "@/components/question-card";
+import { TypeBadge, tfLabel } from "@/components/question-card";
 import { GENERATION_PROMPT, parseQuestions, type ParseResult } from "@/lib/questions";
 
 type Props = { mode: "create" } | { mode: "add"; setId: string };
@@ -166,7 +166,9 @@ function SaveButton({ onClick, pending, children }: { onClick: () => void; pendi
 
 function Preview({ result }: { result: Extract<ParseResult, { ok: true }> }) {
   const shown = result.valid.slice(0, 3);
-  const writtenCount = result.valid.filter((q) => q.type === "written").length;
+  const count = (t: string) => result.valid.filter((q) => q.type === t).length;
+  const writtenCount = count("written");
+  const tfCount = count("tf");
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium text-stone-700">미리보기</p>
@@ -174,10 +176,12 @@ function Preview({ result }: { result: Extract<ParseResult, { ok: true }> }) {
         <div key={i} className="rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm">
           <div className="flex items-start gap-2">
             <p className="flex-1 whitespace-pre-wrap font-medium">{q.question}</p>
-            {q.type === "written" && <WrittenBadge />}
+            <TypeBadge type={q.type} />
           </div>
           {q.type === "written" ? (
             <p className="mt-2 whitespace-pre-wrap text-emerald-700">모범답안: {q.answer}</p>
+          ) : q.type === "tf" ? (
+            <p className="mt-2 text-emerald-700">정답: {tfLabel(q.answer ? 1 : 2)}</p>
           ) : (
             <ol className="mt-2 space-y-0.5 text-stone-600">
               {q.options.map((o, j) => (
@@ -192,9 +196,9 @@ function Preview({ result }: { result: Extract<ParseResult, { ok: true }> }) {
       {result.valid.length > shown.length && (
         <p className="text-xs text-stone-500">외 {result.valid.length - shown.length}문제</p>
       )}
-      {writtenCount > 0 && (
+      {writtenCount + tfCount > 0 && (
         <p className="text-xs text-stone-500">
-          객관식 {result.valid.length - writtenCount}문제, 주관식 {writtenCount}문제
+          객관식 {count("choice")}문제, 주관식 {writtenCount}문제, OX {tfCount}문제
         </p>
       )}
     </div>
@@ -216,7 +220,7 @@ function PromptBox() {
         다른 AI에게 줄 문제 생성 프롬프트
       </summary>
       <p className="mt-2 text-sm text-stone-500">
-        ChatGPT, Claude, Gemini 등에 붙여넣고 [N], [M](객관식, 주관식 개수)과 공부할 내용을 채우면 이 양식으로 문제를 만들어 줍니다.
+        ChatGPT, Claude, Gemini 등에 붙여넣고 [N], [M], [K](객관식, 주관식, OX 개수)과 공부할 내용을 채우면 이 양식으로 문제를 만들어 줍니다.
       </p>
       <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap rounded-lg bg-stone-50 p-3 text-xs text-stone-700">
         {GENERATION_PROMPT}

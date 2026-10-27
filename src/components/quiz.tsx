@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { recordAnswer, recordWrittenGrade } from "@/app/actions";
 import { BookmarkButton } from "@/components/bookmark-button";
-import { WrittenBadge } from "@/components/question-card";
+import { TypeBadge } from "@/components/question-card";
 import type { Question } from "@/lib/questions";
 
 export type QuizMode = "new" | "wrong" | "bookmark";
@@ -18,11 +18,11 @@ const MODE_TEXT: Record<QuizMode, { title: string; empty: string }> = {
 
 type Item = {
   q: Question;
-  /** 화면 위치 -> 원래 선택지 위치(0부터). 주관식이면 빈 배열 */
+  /** 화면 위치 -> 원래 선택지 위치(0부터). 주관식과 OX는 빈 배열 */
   order: number[];
 };
 
-/** chosen은 객관식에서 고른 번호, 주관식이면 null */
+/** chosen은 객관식에서 고른 번호, OX는 1(O) 또는 2(X), 주관식이면 null */
 type Answered = { chosen: number | null; correct: boolean };
 
 const PRESETS = [5, 10, 20];
@@ -163,10 +163,14 @@ export function Quiz({
     saving.current.push(save.catch(() => setSaveError(true)));
   }
 
-  function choose(displayIdx: number) {
+  /** chosen은 원래 선택지 번호(객관식) 또는 1/2(OX) */
+  function submit(chosen: number) {
     if (answer) return;
-    const chosen = item.order[displayIdx] + 1;
     settle({ chosen, correct: chosen === item.q.answer }, recordAnswer(item.q.id, chosen));
+  }
+
+  function choose(displayIdx: number) {
+    submit(item.order[displayIdx] + 1);
   }
 
   function grade(correct: boolean) {
@@ -207,9 +211,9 @@ export function Quiz({
 
       <div className="mt-6 flex items-start gap-2">
         <p className="flex-1 whitespace-pre-wrap text-lg font-medium leading-relaxed">{item.q.question}</p>
-        {item.q.type === "written" && (
+        {item.q.type !== "choice" && (
           <span className="pt-1.5">
-            <WrittenBadge />
+            <TypeBadge type={item.q.type} />
           </span>
         )}
         <BookmarkButton key={item.q.id} setId={setId} questionId={item.q.id} initial={item.q.bookmarked} />
@@ -219,36 +223,68 @@ export function Quiz({
         <WrittenStep key={item.q.id} q={item.q} graded={answer} onGrade={grade} next={next} />
       ) : (
         <>
-          <ul className="mt-6 space-y-2.5">
-            {item.order.map((orig, displayIdx) => {
-              const optionNo = orig + 1;
-              const isAnswer = optionNo === item.q.answer;
-              const isChosen = answer?.chosen === optionNo;
-              let style = "border-stone-300 bg-white hover:border-amber-400 hover:bg-amber-50";
-              if (answer) {
-                if (isAnswer) style = "border-emerald-500 bg-emerald-50";
-                else if (isChosen) style = "border-red-500 bg-red-50";
-                else style = "border-stone-200 bg-white opacity-60";
-              }
-              return (
-                <li key={orig}>
+          {item.q.type === "tf" ? (
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              {[1, 2].map((n) => {
+                const isAnswer = n === item.q.answer;
+                const isChosen = answer?.chosen === n;
+                let style = "border-stone-300 bg-white hover:border-amber-400 hover:bg-amber-50";
+                if (answer) {
+                  if (isAnswer) style = "border-emerald-500 bg-emerald-50";
+                  else if (isChosen) style = "border-red-500 bg-red-50";
+                  else style = "border-stone-200 bg-white opacity-60";
+                }
+                return (
                   <button
+                    key={n}
                     type="button"
                     disabled={!!answer}
-                    onClick={() => choose(displayIdx)}
-                    className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${style}`}
+                    onClick={() => submit(n)}
+                    aria-label={n === 1 ? "O, 맞다" : "X, 틀리다"}
+                    className={`flex flex-col items-center gap-1 rounded-xl border-2 py-6 transition ${style}`}
                   >
-                    <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current text-xs text-stone-500">
-                      {String.fromCharCode(65 + displayIdx)}
+                    <span className={`text-4xl font-bold ${n === 1 ? "text-sky-600" : "text-red-500"}`}>
+                      {n === 1 ? "O" : "X"}
                     </span>
-                    <span className="flex-1 whitespace-pre-wrap">{item.q.options?.[orig]}</span>
-                    {answer && isAnswer && <span className="text-sm font-medium text-emerald-700">정답</span>}
-                    {answer && isChosen && !isAnswer && <span className="text-sm font-medium text-red-700">오답</span>}
+                    <span className="text-sm text-stone-500">
+                      {answer && isAnswer ? "정답" : answer && isChosen ? "오답" : n === 1 ? "맞다" : "틀리다"}
+                    </span>
                   </button>
-                </li>
-              );
-            })}
-          </ul>
+                );
+              })}
+            </div>
+          ) : (
+            <ul className="mt-6 space-y-2.5">
+              {item.order.map((orig, displayIdx) => {
+                const optionNo = orig + 1;
+                const isAnswer = optionNo === item.q.answer;
+                const isChosen = answer?.chosen === optionNo;
+                let style = "border-stone-300 bg-white hover:border-amber-400 hover:bg-amber-50";
+                if (answer) {
+                  if (isAnswer) style = "border-emerald-500 bg-emerald-50";
+                  else if (isChosen) style = "border-red-500 bg-red-50";
+                  else style = "border-stone-200 bg-white opacity-60";
+                }
+                return (
+                  <li key={orig}>
+                    <button
+                      type="button"
+                      disabled={!!answer}
+                      onClick={() => choose(displayIdx)}
+                      className={`flex w-full items-start gap-3 rounded-xl border-2 px-4 py-3 text-left transition ${style}`}
+                    >
+                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current text-xs text-stone-500">
+                        {String.fromCharCode(65 + displayIdx)}
+                      </span>
+                      <span className="flex-1 whitespace-pre-wrap">{item.q.options?.[orig]}</span>
+                      {answer && isAnswer && <span className="text-sm font-medium text-emerald-700">정답</span>}
+                      {answer && isChosen && !isAnswer && <span className="text-sm font-medium text-red-700">오답</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
 
           {answer && (
             <div className="mt-5">

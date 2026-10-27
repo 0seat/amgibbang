@@ -80,7 +80,7 @@ export async function addQuestions(setId: string, questions: unknown[]): Promise
 
   const { data: existing, error } = await supabase
     .from("questions")
-    .select("question, options")
+    .select("type, question, options")
     .eq("set_id", setId);
   if (error) throw new Error(error.message);
 

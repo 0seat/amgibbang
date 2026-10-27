@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { extractJsonArray, parseQuestions, questionKey } from "./questions.ts";
+import { extractJsonArray, parseQuestions, questionKey, toRow } from "./questions.ts";
 
 const good = {
   question: "문제\n두 번째 줄",
@@ -107,4 +107,50 @@ test("주관식 오류를 잡는다", () => {
 test("주관식 중복 키는 본문만 본다", () => {
   assert.equal(questionKey({ question: "q ", options: null }), questionKey({ question: "q" }));
   assert.notEqual(questionKey({ question: "q", options: null }), questionKey({ question: "q", options: ["a", "b", "c", "d"] }));
+});
+
+test("OX 문제를 파싱한다", () => {
+  const r = parseQuestions(
+    JSON.stringify([
+      { type: "tf", question: "물은 100도에서 끓는다.", answer: true },
+      { type: "OX", question: "q2", answer: "X" },
+      { question: "type 없이 불리언 정답", answer: false, explanation: "해설" },
+    ]),
+  );
+  assert.ok(r.ok);
+  assert.equal(r.issues.length, 0);
+  assert.deepEqual(
+    r.valid.map((q) => [q.type, q.answer]),
+    [
+      ["tf", true],
+      ["tf", false],
+      ["tf", false],
+    ],
+  );
+  assert.deepEqual(toRow(r.valid[0]), {
+    type: "tf",
+    question: "물은 100도에서 끓는다.",
+    options: null,
+    answer: 1,
+    model_answer: null,
+    explanation: null,
+  });
+});
+
+test("OX 오류를 잡는다", () => {
+  const r = parseQuestions(
+    JSON.stringify([
+      { type: "tf", question: "q", answer: "아마도" },
+      { type: "tf", question: "q", answer: 1 },
+      { type: "tf", question: "q", answer: true, options: ["a", "b", "c", "d"] },
+    ]),
+  );
+  assert.ok(r.ok);
+  assert.equal(r.valid.length, 0);
+  assert.equal(r.issues.length, 3);
+});
+
+test("OX와 주관식은 본문이 같아도 다른 문제로 본다", () => {
+  assert.notEqual(questionKey({ type: "tf", question: "q" }), questionKey({ type: "written", question: "q" }));
+  assert.equal(questionKey({ type: "tf", question: "q " }), questionKey({ type: "tf", question: "q", options: null }));
 });
